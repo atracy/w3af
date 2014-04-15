@@ -27,7 +27,7 @@ import urlparse
 
 from w3af.core.controllers.misc.is_ip_address import is_ip_address
 from w3af.core.controllers.misc.ordereddict import OrderedDict
-from w3af.core.controllers.exceptions import w3afException
+from w3af.core.controllers.exceptions import BaseFrameworkException
 
 from w3af.core.data.misc.encoding import smart_str, PERCENT_ENCODE
 from w3af.core.data.misc.encoding import is_known_encoding
@@ -129,7 +129,7 @@ def parse_qs(qstr, ignore_exc=True, encoding=DEFAULT_ENCODING):
                     odict[name] = [value]
         except Exception:
             if not ignore_exc:
-                raise w3afException('Error while parsing "%r"' % (qstr,))
+                raise BaseFrameworkException('Error while parsing "%r"' % (qstr,))
         else:
             def decode(item):
                 return (
@@ -194,7 +194,7 @@ class URL(DiskItem):
         if not self.netloc and self.scheme != 'file':
             # The URL is invalid, we don't have a netloc!
             raise ValueError, 'Invalid URL "%s"' % (data,)
-        
+
         self.normalize_url()
 
     @classmethod
@@ -402,9 +402,6 @@ class URL(DiskItem):
                 # The net location has a specific port definition
                 net_location = host + ':' + port
 
-        # A normalized baseURL:
-        base_url = protocol + '://' + net_location + '/'
-
         # Now normalize the path:
         path = self.path
         trailer_slash = path.endswith('/')
@@ -420,8 +417,15 @@ class URL(DiskItem):
                     tokens.pop()
         self.path = '/'.join(tokens) + ('/' if trailer_slash else '')
 
-        # Put everything together
-        fixed_url = urlparse.urljoin(base_url, self.get_path_qs())
+        #
+        # Put everything together, do NOT use urlparse.urljoin here or you'll
+        # introduce a bug! For more information read:
+        #       test_url.py -> test_url_in_filename
+        #       https://github.com/andresriancho/w3af/issues/475
+        #
+        fixed_url = urlparse.urlunparse((protocol, net_location, self.path,
+                                         self.params, str(self.querystring),
+                                         self.fragment))
 
         # "re-init" the object
         (self.scheme, self.netloc, self.path,
@@ -741,7 +745,7 @@ class URL(DiskItem):
                                                keep_blank_values=True, strict_parsing=True)
             except Exception:
                 if not ignore_exc:
-                    raise w3afException('Strange things found when parsing '
+                    raise BaseFrameworkException('Strange things found when parsing '
                                         'params string: ' + self.params)
             else:
                 for k, v in parsedData.iteritems():

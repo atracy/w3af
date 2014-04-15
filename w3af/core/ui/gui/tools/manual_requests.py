@@ -26,10 +26,10 @@ import threading
 from w3af.core.ui.gui import reqResViewer, helpers, entries
 from w3af.core.ui.gui.tools.helpers import ThreadedURLImpact
 
-from w3af.core.controllers.exceptions import (w3afException, w3afMustStopException,
-                                         w3afMustStopOnUrlError,
-                                         w3afMustStopByKnownReasonExc,
-                                         w3afProxyException)
+from w3af.core.controllers.exceptions import (BaseFrameworkException, ScanMustStopException,
+                                              ScanMustStopOnUrlError,
+                                              ScanMustStopByKnownReasonExc,
+                                              ProxyException)
 
 MANUAL_REQUEST_EXAMPLE = """\
 GET http://localhost/script.php HTTP/1.0
@@ -105,8 +105,7 @@ class ManualRequests(entries.RememberingWindow):
 
         # threading game
         event = threading.Event()
-        print repr(tsup)
-        print repr(tlow)
+
         impact = ThreadedURLImpact(self.w3af, tsup, tlow, event,
                                    fix_content_len)
 
@@ -122,10 +121,10 @@ class ManualRequests(entries.RememberingWindow):
                 
             elif hasattr(impact, 'exception'):
                 e_kls = impact.exception.__class__
-                if e_kls in (w3afException, w3afMustStopException,
-                             w3afMustStopOnUrlError,
-                             w3afMustStopByKnownReasonExc,
-                             w3afProxyException):
+                if e_kls in (BaseFrameworkException, ScanMustStopException,
+                             ScanMustStopOnUrlError,
+                             ScanMustStopByKnownReasonExc,
+                             ProxyException):
                     msg = "Stopped sending requests because of the following"\
                           " unexpected error:\n\n%s" % str(impact.exception)
                           

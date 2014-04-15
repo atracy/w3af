@@ -23,6 +23,8 @@ import re
 import unittest
 import urllib2
 import httpretty
+import tempfile
+import pprint
 
 from functools import wraps
 from nose.plugins.skip import SkipTest
@@ -41,6 +43,7 @@ from w3af.core.data.parsers.url import URL
 from w3af.core.data.kb.read_shell import ReadShell 
 
 os.chdir(W3AF_LOCAL_PATH)
+RE_COMPILE_TYPE = type(re.compile(''))
 
 
 @attr('moth')
@@ -66,13 +69,21 @@ class PluginTest(unittest.TestCase):
             proto = url.get_protocol()
             port = url.get_port()
 
-            if (port == 80 and proto == 'http') or\
-            (port == 443 and proto == 'https'):
-                re_str = "%s://%s/(.*)" % (proto, domain)
-            else:
-                re_str = "%s://%s:%s/(.*)" % (proto, domain, port)
+            self._register_httpretty_uri(proto, domain, port)
 
-            httpretty.register_uri(httpretty.GET,
+    def _register_httpretty_uri(self, proto, domain, port):
+        assert isinstance(port, int), 'Port needs to be an integer'
+
+        if (port == 80 and proto == 'http') or\
+        (port == 443 and proto == 'https'):
+            re_str = "%s://%s/(.*)" % (proto, domain)
+        else:
+            re_str = "%s://%s:%s/(.*)" % (proto, domain, port)
+
+        all_methods = set(mock_resp.method for mock_resp in self.MOCK_RESPONSES)
+
+        for http_method in all_methods:
+            httpretty.register_uri(http_method,
                                    re.compile(re_str),
                                    body=self.request_callback)
 
@@ -89,16 +100,27 @@ class PluginTest(unittest.TestCase):
         content_type = 'text/html'
 
         for mock_response in self.MOCK_RESPONSES:
-            if uri.endswith(mock_response.url):
-                status = mock_response.status
-                body = mock_response.body
-                content_type = mock_response.content_type
-                
-                break
-            
+            if mock_response.method != method.command:
+                continue
+
+            if isinstance(mock_response.url, basestring):
+                if uri.endswith(mock_response.url):
+                    status = mock_response.status
+                    body = mock_response.body
+                    content_type = mock_response.content_type
+
+                    break
+            elif isinstance(mock_response.url, RE_COMPILE_TYPE):
+                if mock_response.url.match(uri):
+                    status = mock_response.status
+                    body = mock_response.body
+                    content_type = mock_response.content_type
+
+                    break
+
         headers['Content-Type'] = content_type
         headers['status'] = status
-        
+
         return status, headers, body
 
     @retry(tries=3, delay=0.5, backoff=2)
@@ -162,10 +184,7 @@ class PluginTest(unittest.TestCase):
                                                          unit_test_options)
 
         # Enable text output plugin for debugging
-        if debug:
-            enabled_output = self.w3afcore.plugins.get_enabled_plugins('output')
-            enabled_output += ['text_file']
-            self.w3afcore.plugins.set_plugins(enabled_output, 'output')
+        if debug: self._configure_debug()
 
         # Verify env and start the scan
         self.w3afcore.plugins.init_plugins()
@@ -174,14 +193,48 @@ class PluginTest(unittest.TestCase):
 
         #
         # I want to make sure that we don't have *any hidden* exceptions in our
-        # tests. This was in tearDown before, but moved here because I was getting
-        # failed assertions in my test code that were because of exceptions in the
-        # scan and they were hidden.
+        # tests. This was in tearDown before, but moved here because I was
+        # getting failed assertions in my test code that were because of
+        # exceptions in the scan and they were hidden.
         #
         if assert_exceptions:
             caught_exceptions = self.w3afcore.exception_handler.get_all_exceptions()
-            msg = [e.get_summary() for e in caught_exceptions]
+            msg = self._pprint_exception_summary(caught_exceptions)
             self.assertEqual(len(caught_exceptions), 0, msg)
+
+    def _pprint_exception_summary(self, caught_exceptions):
+        """
+        Given a list of caught exceptions, as returned by
+        exception_handler.get_all_exceptions() , we'll return a string that
+        shows the information about them.
+        """
+        return [e for e in caught_exceptions]
+
+    def _configure_debug(self):
+        """
+        Configure debugging for the scans to be run.
+        """
+        ptype = 'output'
+        pname = 'text_file'
+
+        enabled_output = self.w3afcore.plugins.get_enabled_plugins(ptype)
+        enabled_output += [pname]
+        self.w3afcore.plugins.set_plugins(enabled_output, ptype)
+
+        # Now we configure the output file to point to CircleCI's artifact
+        # directory (when run on circle) and /tmp/ when run on our
+        # workstation
+        output_dir = os.environ.get('CIRCLE_ARTIFACTS', tempfile.gettempdir())
+        text_output = os.path.join(output_dir, 'output.txt')
+        http_output = os.path.join(output_dir, 'output-http.txt')
+
+        text_file_inst = self.w3afcore.plugins.get_plugin_inst(ptype, pname)
+
+        default_opts = text_file_inst.get_options()
+        default_opts['output_file'].set_value(text_output)
+        default_opts['http_output_file'].set_value(http_output)
+
+        self.w3afcore.plugins.set_plugin_options(ptype, pname, default_opts)
 
 
 class PluginConfig(object):
@@ -207,6 +260,7 @@ class PluginConfig(object):
     def options(self):
         return self._options
 
+
 class ReadExploitTest(PluginTest):
     def _exploit_vuln(self, vuln_to_exploit_id, exploit_plugin):
         plugin = self.w3afcore.plugins.get_plugin_inst('attack', exploit_plugin)
@@ -222,9 +276,9 @@ class ReadExploitTest(PluginTest):
         #
         shell = exploit_result[0]
         etc_passwd = shell.generic_user_input('read', ['/etc/passwd',])
-        self.assertTrue('root' in etc_passwd)
-        self.assertTrue('/bin/bash' in etc_passwd)
-        
+        self.assertIn('root', etc_passwd)
+        self.assertIn('/bin/bash', etc_passwd)
+
         lsp = shell.generic_user_input('lsp', [])
         self.assertTrue('apache_config_directory' in lsp)
 
@@ -243,7 +297,8 @@ class ReadExploitTest(PluginTest):
             self.assertIn('/etc/passwd', _help)
         
         return shell
-        
+
+
 class ExecExploitTest(ReadExploitTest):
     def _exploit_vuln(self, vuln_to_exploit_id, exploit_plugin):
         shell = super(ExecExploitTest, self)._exploit_vuln(vuln_to_exploit_id,
@@ -295,16 +350,25 @@ def create_target_option_list(*target):
     opt = opt_factory('target_framework',
                       ('unknown', 'php', 'asp', 'asp.net',
                        'java', 'jsp', 'cfm', 'ruby', 'perl'),
-                      '', 'combo'
-    )
+                      '', 'combo')
     opts.add(opt)
     
     return opts
 
+
 class MockResponse(object):
-    def __init__(self, url, body, content_type='text/html', status=200): 
+    def __init__(self, url, body, content_type='text/html', status=200,
+                 method='GET'):
         self.url = url
         self.body = body
         self.content_type = content_type
         self.status = status
-        
+        self.method = method
+
+        assert method in ('GET', 'PUT', 'POST', 'DELETE', 'HEAD', 'PATCH',
+                          'OPTIONS', 'CONNECT'), 'httpretty can not mock this'\
+                                                 ' method'
+        assert isinstance(url, (basestring, RE_COMPILE_TYPE))
+
+    def __repr__(self):
+        return '<MockResponse (%s|%s)>' % (self.url, self.status)

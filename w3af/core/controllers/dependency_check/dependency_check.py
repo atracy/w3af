@@ -24,14 +24,27 @@ import warnings
 import logging
 
 try:
+    # Is pip even there?
     import pip
-    HAS_PIP = True
+    # We do this in order to check for really old versions of pip
+    pip.get_installed_distributions()
 except ImportError:
+    print('We recommend you install pip before continuing.')
+    print('http://www.pip-installer.org/en/latest/installing.html')
     HAS_PIP = False
+except AttributeError:
+    print('A very old version of pip was detected. We recommend you update your'
+          ' your pip installation before continuing:')
+    print('    sudo pip install --upgrade pip')
+    HAS_PIP = False
+else:
+    HAS_PIP = True
 
 from .lazy_load import lazy_load
 from .utils import verify_python_version
-from .helper_script import generate_helper_script, generate_pip_install_non_git
+from .helper_script import (generate_helper_script,
+                            generate_pip_install_non_git,
+                            generate_pip_install_git)
 from .helper_requirements_txt import generate_requirements_txt
 from .platforms.current_platform import (SYSTEM_NAME,
                                          PKG_MANAGER_CMD,
@@ -43,8 +56,8 @@ from .platforms.current_platform import (SYSTEM_NAME,
 
     
 def dependency_check(pip_packages=PIP_PACKAGES, system_packages=SYSTEM_PACKAGES,
-                       system_name=SYSTEM_NAME, pkg_manager_cmd=PKG_MANAGER_CMD,
-                       pip_cmd=PIP_CMD, exit_on_failure=True):
+                     system_name=SYSTEM_NAME, pkg_manager_cmd=PKG_MANAGER_CMD,
+                     pip_cmd=PIP_CMD, exit_on_failure=True):
     """
     This function verifies that the dependencies that are needed by the
     framework core are met.
@@ -140,7 +153,7 @@ def dependency_check(pip_packages=PIP_PACKAGES, system_packages=SYSTEM_PACKAGES,
         
         if git_pkgs:
             for missing_git_pkg in git_pkgs:
-                msg += '    sudo %s install --ignore-installed %s\n' % (pip_cmd, missing_git_pkg)
+                msg += '    %s\n' % generate_pip_install_git(pip_cmd, missing_git_pkg)
         
         print msg
     

@@ -23,13 +23,12 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 import threading
 import Queue
-import webbrowser
 import textwrap
 import gtk
 import os
 
 from w3af.core.ui.gui import GUI_DATA_PATH
-from w3af.core.controllers.exceptions import w3afException
+from w3af.core.controllers.exceptions import BaseFrameworkException
 from w3af.core.ui.gui.constants import W3AF_ICON
 
 
@@ -209,7 +208,7 @@ class _Wrapper(object):
                 FriendlyExceptionDlg(str(err))
             raise
 
-coreWrap = _Wrapper(w3afException)
+coreWrap = _Wrapper(BaseFrameworkException)
 
 #--
 # Trying to not use threads anymore, but still need to
@@ -430,18 +429,6 @@ KB_COLOR_LEVEL = {
 }
 
 KB_COLORS = ["black", "orange", "red", "red"]
-
-
-def open_help(chapter=''):
-    """Opens the help file in user's preferred browser.
-
-    :param chapter: the chapter of the help, optional.
-    """
-    if chapter:
-        chapter = '#' + chapter
-    helpfile = os.path.join(
-        os.getcwd(), "doc/EN/gui-html/index.html" + chapter)
-    webbrowser.open("file://" + helpfile)
 
 
 class DrawingAreaStringRepresentation(gtk.DrawingArea):

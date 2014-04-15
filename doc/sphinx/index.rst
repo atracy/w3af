@@ -56,6 +56,7 @@ Contents
    :maxdepth: 2
 
    install
+   advanced-install
    update
 
    phases
@@ -68,3 +69,10 @@ Contents
 
    report-a-bug
    contributors
+
+GUI documentation
+-----------------
+.. toctree::
+   :maxdepth: 3
+
+   gui/index

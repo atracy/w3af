@@ -18,6 +18,7 @@ You should have received a copy of the GNU General Public License
 along with w3af; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 """
+from w3af.core.controllers.output_manager import out
 from w3af.core.controllers.delay_detection.exact_delay import ExactDelay
 from w3af.core.controllers.delay_detection.delay_mixin import DelayMixIn
 
@@ -35,7 +36,8 @@ class ExactDelayController(DelayMixIn):
     benchmark(...).
     """
 
-    DELTA = 0.5
+    # 25% more/less than the original wait time
+    DELTA_PERCENT = 1.25
 
     #
     # Note that these delays are applied ONLY if all the previous delays worked
@@ -45,7 +47,7 @@ class ExactDelayController(DelayMixIn):
     #
     # Also note that these delays can't be greater than the framework socket
     # timeout or that will break the algorithm
-    DELAY_SECONDS = [3, 1, 6, 1, 3]
+    DELAY_SECONDS = [3, 2, 6, 2, 3]
 
     def __init__(self, mutant, delay_obj, uri_opener):
         """
@@ -80,19 +82,38 @@ class ExactDelayController(DelayMixIn):
         """
         responses = []
         
-        #    Setup
-        original_wait_time = self.get_original_time()
-
         for delay in self.DELAY_SECONDS:
+            # Update the wait time before each test
+            original_wait_time = self.get_original_time()
+
             success, response = self.delay_for(delay, original_wait_time)
             if success:
+                self._log_success(delay, response)
                 responses.append(response)
             else:
+                self._log_failure(delay, response)
                 return False, []
 
         return True, responses
 
-    def delay_for(self, seconds, original_wait_time):
+    def _log_success(self, delay, response):
+        msg = '(Test id: %s) Successfully controlled HTTP response delay for'\
+              ' URL %s - parameter "%s" for %s seconds using %r, response'\
+              ' wait time was: %s seconds.'
+        self._log_generic(msg, delay, response)
+
+    def _log_failure(self, delay, response):
+        msg = '(Test id: %s) Failed to control HTTP response delay for'\
+              ' URL %s - parameter "%s" for %s seconds using %r, response'\
+              ' wait time was: %s seconds.'
+        self._log_generic(msg, delay, response)
+
+    def _log_generic(self, msg, delay, response):
+        args = (id(self), self.mutant.get_url(), self.mutant.get_var(), delay,
+                self.delay_obj, response.get_wait_time())
+        out.debug(msg % args)
+
+    def delay_for(self, delay, original_wait_time):
         """
         Sends a request to the remote end that "should" delay the response in
         :param seconds.
@@ -104,20 +125,26 @@ class ExactDelayController(DelayMixIn):
                  things right we first send some requests to measure the
                  original wait time.
         """
-        delay_str = self.delay_obj.get_string_for_delay(seconds)
+        delay_str = self.delay_obj.get_string_for_delay(delay)
         mutant = self.mutant.copy()
         mutant.set_mod_value(delay_str)
 
-        #    Send
+        #    Send, it is important to notice that we don't use the cache
+        #    to avoid any interference
         response = self.uri_opener.send_mutant(mutant, cache=False)
 
         #    Test
-        delta = original_wait_time / 1.5
+        delta = original_wait_time * self.DELTA_PERCENT
         current_response_wait_time = response.get_wait_time()
 
-        if current_response_wait_time > (original_wait_time + seconds - delta):
-            if current_response_wait_time < seconds * 2:
-                    return True, response
+        upper_bound = (delay * 2) + original_wait_time + delta
+        lower_bound = original_wait_time + delay - delta
+
+        args = (id(self), upper_bound, current_response_wait_time, lower_bound)
+        out.debug('(Test id: %s) %s > %s > %s' % args)
+
+        if upper_bound > current_response_wait_time > lower_bound:
+            return True, response
 
         return False, response
 

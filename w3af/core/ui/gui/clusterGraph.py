@@ -25,7 +25,7 @@ import gobject
 import xdot
 
 from w3af.core.controllers.misc.levenshtein import relative_distance
-from w3af.core.controllers.exceptions import w3afException
+from w3af.core.controllers.exceptions import BaseFrameworkException
 
 from w3af.core.ui.gui.constants import W3AF_ICON
 from w3af.core.ui.gui.reqResViewer import reqResWindow
@@ -79,7 +79,7 @@ class distance_function_selector(entries.RememberingWindow):
     def __init__(self, w3af, response_list):
         super(distance_function_selector, self).__init__(
             w3af, "distance_function_selector", "w3af - Select distance function",
-            "select_distance_function")
+            "cluster")
         self.resize(300, 200)
 
         # Save for later usage
@@ -183,7 +183,7 @@ class distance_function_selector(entries.RememberingWindow):
             window = clusterGraphWidget(
                 self.w3af, self.data, distance_function=selected_function,
                 custom_code=custom_code)
-        except w3afException, w3:
+        except BaseFrameworkException, w3:
             msg = str(w3)
             dlg = gtk.MessageDialog(None, gtk.DIALOG_MODAL,
                                     gtk.MESSAGE_ERROR, gtk.BUTTONS_OK, msg)
@@ -271,7 +271,7 @@ class w3afDotWindow(xdot.DotWindow):
     def set_filter(self, filter):
         self.widget.set_filter(filter)
 
-    def set_dotcode(self, dotcode, filename='<stdin>'):
+    def set_dotcode(self, dotcode, filename=None):
         if self.widget.set_dotcode(dotcode, filename):
             self.widget.zoom_to_fit()
 
@@ -310,26 +310,28 @@ class clusterGraphWidget(w3afDotWindow):
                 self.hide()
                 msg = 'Please review your customized code. An error was raised'\
                       ' while compiling: "%s".' % e
-                raise w3afException(msg)
+                raise BaseFrameworkException(msg)
 
             try:
-                dotcode = self._generateDotCode(
-                    response_list, distance_function=callable_object)
+                dotcode = self._generateDotCode(response_list,
+                                                distance_function=callable_object)
             except Exception, e:
-                # TODO: instead of hiding..., which may consume memory... why don't killing?
+                # TODO: instead of hiding..., which may consume memory...
+                # why don't killing?
                 self.hide()
-                msg = 'Please review your customized code. An error was raised on run time: "'
-                msg += str(e) + '"'
-                raise w3afException(msg)
+                msg = 'Please review your customized code. An error was raised'\
+                      ' on run time: "%s"'
+                raise BaseFrameworkException(msg % e)
 
         else:
             raise Exception('Please review your buggy code ;)')
 
         self.set_filter('neato')
 
-        # The problem with the delay is HERE ! The self._generateDotCode method is FAST.
-        # The real problem is inside "tokens = graphparser.parseString(data)" (dot_parser.py)
-        # which is called inside set_dotcode
+        # The problem with the delay is HERE ! The self._generateDotCode method
+        # is FAST. The real problem is inside "tokens =
+        # graphparser.parseString(data)" (dot_parser.py) which is called inside
+        # set_dotcode
         self.set_dotcode(dotcode)
 
     def _create_callable_object(self, code):
@@ -350,7 +352,8 @@ class clusterGraphWidget(w3afDotWindow):
 
     def _relative_distance(self, a, b):
         """
-        Calculates the distance between two responses based on the levenshtein distance
+        Calculates the distance between two responses based on the levenshtein
+        distance
 
         :return: The distance
         """

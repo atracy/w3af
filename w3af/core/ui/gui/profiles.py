@@ -23,7 +23,7 @@ import gtk
 import cgi
 
 from w3af.core.ui.gui import helpers, entries
-from w3af.core.controllers.exceptions import w3afException
+from w3af.core.controllers.exceptions import BaseFrameworkException
 from w3af.core.data.profile.profile import profile as profile
 
 
@@ -94,7 +94,7 @@ class ProfileList(gtk.TreeView):
         if self._parameter_profile:
             try:
                 profile_obj = profile(self._parameter_profile)
-            except w3afException:
+            except BaseFrameworkException:
                 raise ValueError(_("The profile %r does not exists!")
                                  % self._parameter_profile)
             else:
@@ -154,7 +154,8 @@ class ProfileList(gtk.TreeView):
                 else:
                     self.set_cursor(0)
 
-        # Now that we've finished loading everything, show the invalid profiles in a nice pop-up window
+        # Now that we've finished loading everything, show the invalid profiles
+        # in a nice pop-up window
         if invalid_profiles:
             message = 'The following profiles are invalid and failed to load:\n'
             for i in invalid_profiles:
@@ -210,6 +211,7 @@ class ProfileList(gtk.TreeView):
         path = self.get_cursor()[0]
         if not path:
             return
+
         row = self.liststore[path]
         row[3] = changed
         if changed:
@@ -245,7 +247,9 @@ class ProfileList(gtk.TreeView):
         path = self.get_cursor()[0]
         if not path:
             return
+
         row = self.liststore[path]
+
         if row[3]:
             # The profile is changed
             if event.button != 1:
@@ -259,9 +263,9 @@ class ProfileList(gtk.TreeView):
             stayhere = dlg.run() != gtk.RESPONSE_YES
             dlg.destroy()
             if not stayhere:
-                # even if it's modified, we're leaving it: when we come back, the previous
-                # configuration will be loaded... so here we just unbold it and set it as
-                # not modified
+                # even if it's modified, we're leaving it: when we come back,
+                # the previous configuration will be loaded... so here we just
+                # unbold it and set it as not modified
                 row[0] = row[4]
                 row[3] = False
                 self.w3af.mainwin.sb(
@@ -282,7 +286,9 @@ class ProfileList(gtk.TreeView):
         path = self.get_cursor()[0]
         if not path:
             return
+
         row = self.liststore[path]
+
         posic = self.get_path_at_pos(int(event.x), int(event.y))
         if posic is None:
             return
@@ -375,7 +381,7 @@ class ProfileList(gtk.TreeView):
 
         try:
             self.w3af.profiles.use_profile(profile_obj.get_profile_file())
-        except w3afException, w3:
+        except BaseFrameworkException, w3:
             dlg = gtk.MessageDialog(None, gtk.DIALOG_MODAL,
                                     gtk.MESSAGE_WARNING, gtk.BUTTONS_OK,
                                     str(w3))
@@ -410,8 +416,10 @@ class ProfileList(gtk.TreeView):
         # use the empty profile
         try:
             self.w3af.profiles.use_profile(None)
-        except w3afException, w3:
-            dlg = gtk.MessageDialog(None, gtk.DIALOG_MODAL, gtk.MESSAGE_WARNING, gtk.BUTTONS_OK, str(w3))
+        except BaseFrameworkException, w3:
+            dlg = gtk.MessageDialog(None, gtk.DIALOG_MODAL,
+                                    gtk.MESSAGE_WARNING,
+                                    gtk.BUTTONS_OK, str(w3))
             dlg.run()
             dlg.destroy()
             return
@@ -424,7 +432,7 @@ class ProfileList(gtk.TreeView):
             profile_obj = helpers.coreWrap(
                 self.w3af.profiles.save_current_to_new_profile,
                 filename, description)
-        except w3afException:
+        except BaseFrameworkException:
             #FIXME: This message should be more descriptive
             self.w3af.mainwin.sb(_("Problem hit!"))
             return
@@ -468,8 +476,9 @@ class ProfileList(gtk.TreeView):
             filename, description = dlgResponse
             filename = cgi.escape(filename)
             try:
-                profile_obj = helpers.coreWrap(self.w3af.profiles.save_current_to_new_profile, filename, description)
-            except w3afException:
+                profile_obj = helpers.coreWrap(self.w3af.profiles.save_current_to_new_profile,
+                                               filename, description)
+            except BaseFrameworkException:
                 self.w3af.mainwin.sb(
                     _("There was a problem saving the profile!"))
                 return
@@ -478,7 +487,8 @@ class ProfileList(gtk.TreeView):
 
     def revert_profile(self, widget=None):
         """Reverts the selected profile to its saved state."""
-        msg = _("Do you really want to discard the changes in the the profile and load the previous saved configuration?")
+        msg = _("Do you really want to discard the changes in the the profile"
+                " and load the previous saved configuration?")
         dlg = gtk.MessageDialog(None, gtk.DIALOG_MODAL,
                                 gtk.MESSAGE_WARNING, gtk.BUTTONS_YES_NO, msg)
         opt = dlg.run()
@@ -487,19 +497,27 @@ class ProfileList(gtk.TreeView):
         if opt == gtk.RESPONSE_YES:
             self.selectedProfile = -1
             path = self.get_cursor()[0]
+
+            if not path:
+                # https://github.com/andresriancho/w3af/issues/1886
+                return
+
             row = self.liststore[path]
+
             row[0] = row[4]
             row[3] = False
             self._use_profile()
-            self.w3af.mainwin.sb(_("The profile configuration was reverted to its last saved state"))
+            self.w3af.mainwin.sb(_("The profile configuration was reverted to"
+                                   " its last saved state"))
 
     def delete_profile(self, widget=None):
         """Deletes the selected profile."""
         profile_obj = self._getProfile()
 
-        msg = _("Do you really want to DELETE the profile '%s'?") % profile_obj.get_name()
+        msg = _("Do you really want to DELETE the profile '%s'?")
         dlg = gtk.MessageDialog(None, gtk.DIALOG_MODAL,
-                                gtk.MESSAGE_WARNING, gtk.BUTTONS_YES_NO, msg)
+                                gtk.MESSAGE_WARNING, gtk.BUTTONS_YES_NO,
+                                msg % profile_obj.get_name())
         opt = dlg.run()
         dlg.destroy()
 

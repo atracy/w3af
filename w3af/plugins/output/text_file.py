@@ -27,7 +27,7 @@ import w3af.core.data.constants.severity as severity
 import w3af.core.controllers.output_manager as om
 
 from w3af.core.controllers.plugins.output_plugin import OutputPlugin
-from w3af.core.controllers.exceptions import w3afException
+from w3af.core.controllers.exceptions import BaseFrameworkException
 from w3af.core.data.options.opt_factory import opt_factory
 from w3af.core.data.options.option_types import OUTPUT_FILE
 from w3af.core.data.options.option_list import OptionList
@@ -71,11 +71,11 @@ class text_file(OutputPlugin):
             self._file = open(self._output_file_name, "w")
         except IOError, io:
             msg = 'Can\'t open report file "%s" for writing, error: %s.'
-            raise w3afException(msg % (os.path.abspath(self._output_file_name),
+            raise BaseFrameworkException(msg % (os.path.abspath(self._output_file_name),
                                        io.strerror))
         except Exception, e:
             msg = 'Can\'t open report file "%s" for writing, error: %s.'
-            raise w3afException(
+            raise BaseFrameworkException(
                 msg % (os.path.abspath(self._output_file_name), e))
 
         try:
@@ -84,11 +84,11 @@ class text_file(OutputPlugin):
             self._http = open(self._http_file_name, "wb")
         except IOError, io:
             msg = 'Can\'t open HTTP report file "%s" for writing, error: %s.'
-            raise w3afException(msg % (os.path.abspath(self._http_file_name),
+            raise BaseFrameworkException(msg % (os.path.abspath(self._http_file_name),
                                        io.strerror))
         except Exception, e:
             msg = 'Can\'t open HTTP report file "%s" for writing, error: %s.'
-            raise w3afException(
+            raise BaseFrameworkException(
                 msg % (os.path.abspath(self._http_file_name), e))
 
     def _write_to_file(self, msg):
@@ -106,7 +106,7 @@ class text_file(OutputPlugin):
             self._file = None
             msg = 'An exception was raised while trying to write to the output'\
                   ' file "%s", error: "%s". Disabling output to this file.'
-            om.out.error(msg  % (self._output_file_name, e),
+            om.out.error(msg % (self._output_file_name, e),
                          ignore_plugins=set([self.get_name()]))
 
     def _write_to_HTTP_log(self, msg):
@@ -125,7 +125,7 @@ class text_file(OutputPlugin):
             self._http = None
             msg = 'An exception was raised while trying to write to the output'\
                   ' file "%s", error: "%s". Disabling output to this file.'
-            om.out.error(msg  % (self._http_file_name, e),
+            om.out.error(msg % (self._http_file_name, e),
                          ignore_plugins=set([self.get_name()]))
             
     def write(self, message, log_type, new_line=True):

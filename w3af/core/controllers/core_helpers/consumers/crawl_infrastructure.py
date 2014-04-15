@@ -25,13 +25,15 @@ import w3af.core.controllers.output_manager as om
 import w3af.core.data.kb.config as cf
 import w3af.core.data.kb.knowledge_base as kb
 
+from w3af.core.data.db.variant_db import VariantDB
+from w3af.core.data.bloomfilter.scalable_bloom import ScalableBloomFilter
+from w3af.core.data.request.fuzzable_request import FuzzableRequest
+
 from w3af.core.controllers.core_helpers.consumers.constants import POISON_PILL
-from w3af.core.controllers.exceptions import w3afException, w3afRunOnce
+from w3af.core.controllers.exceptions import BaseFrameworkException, RunOnce
 from w3af.core.controllers.threads.threadpool import return_args
 from w3af.core.controllers.core_helpers.consumers.base_consumer import (BaseConsumer,
                                                                         task_decorator)
-from w3af.core.data.db.variant_db import VariantDB
-from w3af.core.data.bloomfilter.scalable_bloom import ScalableBloomFilter
 
 
 class crawl_infrastructure(BaseConsumer):
@@ -104,7 +106,7 @@ class crawl_infrastructure(BaseConsumer):
         for plugin in to_teardown:
             try:
                 plugin.end()
-            except w3afException, e:
+            except BaseFrameworkException, e:
                 om.out.error('The plugin "%s" raised an exception in the '
                              'end() method: %s' % (plugin.get_name(), e))
 
@@ -162,10 +164,18 @@ class crawl_infrastructure(BaseConsumer):
                 break
             
             else:
+                # Is the plugin really returning a fuzzable request?
+                if not isinstance(fuzzable_request, FuzzableRequest):
+                    msg = 'The %s plugin did NOT return a FuzzableRequest.'
+                    ve = ValueError(msg % plugin.get_name())
+                    self.handle_exception(plugin.get_type(), plugin.get_name(),
+                                          fuzzable_request, ve)
+
+
                 # The plugin has queued some results and now we need to analyze
                 # which of the returned fuzzable requests are new and should be
                 # put in the input_queue again.
-                if self._is_new_fuzzable_request(plugin, fuzzable_request):
+                elif self._is_new_fuzzable_request(plugin, fuzzable_request):
 
                     # Update the list / set that lives in the KB
                     kb.kb.add_fuzzable_request(fuzzable_request)
@@ -258,7 +268,7 @@ class crawl_infrastructure(BaseConsumer):
 
     def _remove_discovery_plugin(self, plugin_to_remove):
         """
-        Remove plugins that don't want to be run anymore and raised a w3afRunOnce
+        Remove plugins that don't want to be run anymore and raised a RunOnce
         exception during the crawl phase.
         """
         for plugin_type in ('crawl', 'infrastructure'):
@@ -385,12 +395,12 @@ class crawl_infrastructure(BaseConsumer):
 
         try:
             result = plugin.discover_wrapper(fuzzable_request)
-        except w3afException, e:
+        except BaseFrameworkException, e:
             msg = 'An exception was found while running "%s" with "%s": "%s".'
             om.out.error(msg % (plugin.get_name(), fuzzable_request), e)
-        except w3afRunOnce:
+        except RunOnce:
             # Some plugins are meant to be run only once
-            # that is implemented by raising a w3afRunOnce
+            # that is implemented by raising a RunOnce
             # exception
             self._remove_discovery_plugin(plugin)
         except Exception, e:

@@ -32,7 +32,7 @@ import w3af.core.data.kb.knowledge_base as kb
 from w3af.core.controllers.plugins.output_plugin import OutputPlugin
 from w3af.core.controllers.misc import get_w3af_version
 from w3af.core.data.misc.encoding import smart_str
-from w3af.core.controllers.exceptions import w3afException
+from w3af.core.controllers.exceptions import BaseFrameworkException
 from w3af.core.data.db.history import HistoryItem
 from w3af.core.data.options.opt_factory import opt_factory
 from w3af.core.data.options.option_types import OUTPUT_FILE
@@ -48,6 +48,7 @@ str = partial(smart_str, encoding='utf8', errors='xmlcharrefreplace')
 NON_BIN = ('atom+xml', 'ecmascript', 'EDI-X12', 'EDIFACT', 'json',
            'javascript', 'rss+xml', 'soap+xml', 'font-woff',
            'xhtml+xml', 'xml-dtd', 'xop+xml')
+
 
 class xml_file(OutputPlugin):
     """
@@ -95,11 +96,11 @@ class xml_file(OutputPlugin):
             self._file = open(self._file_name, "w")
         except IOError, io:
             msg = 'Can\'t open report file "%s" for writing, error: %s.'
-            raise w3afException(msg % (os.path.abspath(self._file_name),
+            raise BaseFrameworkException(msg % (os.path.abspath(self._file_name),
                                        io.strerror))
         except Exception, e:
             msg = 'Can\'t open report file "%s" for writing, error: %s.'
-            raise w3afException(msg % (os.path.abspath(self._file_name), e))
+            raise BaseFrameworkException(msg % (os.path.abspath(self._file_name), e))
 
     def do_nothing(self, *args, **kwds):
         pass

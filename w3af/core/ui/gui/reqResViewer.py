@@ -26,8 +26,9 @@ import gobject
 
 import w3af.core.controllers.output_manager as om
 
-from w3af.core.controllers.exceptions import (w3afException, w3afMustStopException,
-                                         w3afMustStopOnUrlError)
+from w3af.core.controllers.exceptions import (BaseFrameworkException,
+                                              ScanMustStopException,
+                                              ScanMustStopOnUrlError)
 
 from w3af.core.data.db.history import HistoryItem
 from w3af.core.data.constants import severity
@@ -43,13 +44,21 @@ from w3af.core.ui.gui.rrviews.headers import HttpHeadersView
 from w3af.core.ui.gui.rrviews.rendering import getRenderingView
 from w3af.core.ui.gui.export_request import export_request
 from w3af.core.ui.gui import helpers
-from git.refs.head import HEAD
 
 
 def sigsegv_handler(signum, frame):
-    print _('We caught a segmentation fault! Please report this bug to the'
-            ' w3af-develop mailing list, providing details on how to reproduce'
-            ' the issue in our environment.')
+    #
+    # Might be a good idea to use https://pypi.python.org/pypi/faulthandler/
+    # in future versions.
+    #
+    # For now I'm making this handler as small as possible to avoid issues like:
+    #
+    # https://github.com/andresriancho/w3af/issues/1850
+    # https://github.com/andresriancho/w3af/issues/1899
+    #
+    print('We caught a segmentation fault! Please report this bug to the'
+          ' w3af-develop mailing list, providing details on how to reproduce'
+          ' the issue in our environment.')
 
 signal.signal(signal.SIGSEGV, sigsegv_handler)
 
@@ -246,12 +255,12 @@ class reqResViewer(gtk.VBox):
                         historyItem.info = result.get_desc()
                         historyItem.save()
         else:
-            if impact.exception.__class__ == w3afException:
+            if impact.exception.__class__ == BaseFrameworkException:
                 msg = str(impact.exception)
-            elif impact.exception.__class__ == w3afMustStopException:
+            elif impact.exception.__class__ == ScanMustStopException:
                 msg = "Stopped sending requests because " + \
                     str(impact.exception)
-            elif impact.exception.__class__ == w3afMustStopOnUrlError:
+            elif impact.exception.__class__ == ScanMustStopOnUrlError:
                 msg = "Not sending requests because " + str(impact.exception)
             else:
                 raise impact.exception
@@ -482,11 +491,12 @@ class ThreadedURLImpact(threading.Thread):
                     try:
                         tmp_result = plugin.audit_return_vulns(self.request)
                         plugin.end()
-                    except w3afException, e:
+                    except BaseFrameworkException, e:
                         om.out.error(str(e))
                     else:
                         #
-                        #   Save the plugin that found the vulnerability in the result
+                        #   Save the plugin that found the vulnerability in the
+                        #   result
                         #
                         for r in tmp_result:
                             r.plugin_name = plugin_name
@@ -501,7 +511,7 @@ class ThreadedURLImpact(threading.Thread):
                 try:
                     self.result = plugin.audit_return_vulns(self.request)
                     plugin.end()
-                except w3afException, e:
+                except BaseFrameworkException, e:
                     om.out.error(str(e))
                 else:
                     #
@@ -516,7 +526,8 @@ class ThreadedURLImpact(threading.Thread):
         except Exception, e:
             self.exception = e
             #
-            #   This is for debugging errors in the audit button of the reqResViewer
+            #   This is for debugging errors in the audit button of the
+            #   reqResViewer
             #
             #import traceback
             #print traceback.format_exc()

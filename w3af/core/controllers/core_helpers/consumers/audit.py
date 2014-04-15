@@ -22,9 +22,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 import w3af.core.controllers.output_manager as om
 
 from w3af.core.controllers.misc.decorators import retry
+from w3af.core.controllers.exceptions import BaseFrameworkException
 from w3af.core.controllers.core_helpers.consumers.base_consumer import (BaseConsumer,
                                                                         task_decorator)
-from w3af.core.controllers.exceptions import w3afException
 
 
 class audit(BaseConsumer):
@@ -48,7 +48,7 @@ class audit(BaseConsumer):
         for plugin in self._consumer_plugins:
             try:
                 plugin.end()
-            except w3afException, e:
+            except BaseFrameworkException, e:
                 om.out.error(str(e))
             except Exception, e:
                 self.handle_exception('audit', plugin.get_name(),

@@ -38,7 +38,7 @@ from w3af.core.ui.console.bug_report import bug_report_menu
 from w3af.core.ui.console.util import mapDict
 from w3af.core.ui.console.tables import table
 
-from w3af.core.controllers.exceptions import w3afException, w3afMustStopException
+from w3af.core.controllers.exceptions import BaseFrameworkException, ScanMustStopException
 from w3af.core.controllers.misc.get_w3af_version import get_w3af_version
 from w3af.core.controllers.misc_settings import MiscSettings
 
@@ -70,7 +70,9 @@ class rootMenu(menu):
 
     def _cmd_start(self, params):
         """
-        Start the core in a different thread, monitor keystrokes in the main thread.
+        Start the core in a different thread, monitor keystrokes in the main
+        thread.
+
         :return: None
         """
         # Check if the console output plugin is enabled or not, and warn.
@@ -120,9 +122,9 @@ class rootMenu(menu):
             self._w3af.plugins.init_plugins()
             self._w3af.verify_environment()
             self._w3af.start()
-        except w3afException, w3:
+        except BaseFrameworkException, w3:
             om.out.error(str(w3))
-        except w3afMustStopException, w3:
+        except ScanMustStopException, w3:
             om.out.error(str(w3))
         except Exception:
             self._w3af.stop()

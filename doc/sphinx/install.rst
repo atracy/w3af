@@ -1,5 +1,5 @@
-Installation procedure
-======================
+Installation
+============
 
 Prerequisites
 -------------
@@ -8,6 +8,7 @@ Make sure you have the following software ready before starting the installation
 
  * Git client: ``sudo apt-get install git``
  * Python 2.7, which is installed by default in most systems
+ * Pip version 1.1: ``sudo apt-get install python-pip``
 
 Installation
 ------------
@@ -22,7 +23,7 @@ Installation
 
 Let me explain what's going on there:
 
- * First we use ``git`` to download w3af's source code
+ * First we use ``git`` to download ``w3af``'s source code
  * Then we try to run the ``w3af_console`` command, which will most likely fail because of missing dependencies. This command will generate a helper script at ``/tmp/w3af_dependency_install.sh`` that when run will install all the required dependencies.
  * Dependencies are installed by running ``/tmp/w3af_dependency_install.sh``
 
@@ -45,32 +46,29 @@ One of the ugly details users can find is that ``w3af`` needs to detect the Oper
 
 The list of distributions ``w3af`` knows how to generate the installation script for `is extensive <https://github.com/andresriancho/w3af/tree/feature/module/w3af/core/controllers/dependency_check/platforms>`_ . If we don't support your distribution, we'll default to Ubuntu.
 
-Installing using virtualenv
----------------------------
+Installation in Kali
+--------------------
+
+`According to Kali's documentation <http://www.kali.org/kali-monday/bleeding-edge-kali-repositories/>`_ in order to avoid breaking the packaged ``w3af`` version you should run the following commands:
+
+.. code-block:: console
+
+    cd ~
+    apt-get update
+    apt-get install -y python-pip
+    pip install --upgrade pip
+    git clone https://github.com/andresriancho/w3af.git
+    cd w3af
+    ./w3af_console
+    . /tmp/w3af_dependency_install.sh
+
+This allows you to use the latest w3af version without breaking or overriding the one installed using Kali's package system.
 
 .. note::
 
-   Installing in a ``virtualenv`` is great to isolate ``w3af`` python packages from the system packages, but is not required to have a working ``w3af`` installation.
-
-Virtualenv is a great tool that will allow you to install ``w3af`` in a virtual and isolated environment that won't affect your operating system python packages.
-
-.. code-block:: console
-
-    $ cd w3af
-    $ virtualenv venv
-    $ . venv/bin/activate
-    (venv)$ ./w3af_console
-    (venv)$ pip install <missing dependencies>
-
-Note that the last command doesn't require ``root`` privileges. All the packages installed with this command will be saved inside the ``venv`` directory and won't affect your system packages.
-
-Each time you want to run ``w3af`` in a new console you'll have to activate the virtualenv:
-
-.. code-block:: console
-
-    $ cd w3af
-    $ . venv/bin/activate
-    (venv)$ ./w3af_console
+   There are two versions in your OS now:
+    * ``cd ~/w3af/ ; ./w3af_console`` will run the latest version
+    * ``w3af_console`` will run the one packaged in Kali
 
 Troubleshooting
 ---------------

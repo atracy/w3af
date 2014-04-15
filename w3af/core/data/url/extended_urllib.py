@@ -19,6 +19,7 @@ along with w3af; if not, write to the Free Software
 Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 """
+import ssl
 import httplib
 import socket
 import threading
@@ -36,12 +37,12 @@ import w3af.core.controllers.output_manager as om
 import w3af.core.data.kb.config as cf
 import opener_settings
 
-from w3af.core.controllers.profiling.memory_usage import dump_memory_usage
-from w3af.core.controllers.exceptions import (w3afMustStopException, w3afException,
-                                         w3afMustStopByUnknownReasonExc,
-                                         w3afMustStopByKnownReasonExc,
-                                         w3afMustStopByUserRequest,
-                                         w3afMustStopOnUrlError)
+from w3af.core.controllers.exceptions import (ScanMustStopException,
+                                              BaseFrameworkException,
+                                              ScanMustStopByUnknownReasonExc,
+                                              ScanMustStopByKnownReasonExc,
+                                              ScanMustStopByUserRequest,
+                                              ScanMustStopOnUrlError)
 from w3af.core.data.parsers.HTTPRequestParser import HTTPRequestParser
 from w3af.core.data.parsers.url import URL
 from w3af.core.data.request.factory import create_fuzzable_request_from_parts
@@ -64,7 +65,6 @@ class ExtendedUrllib(object):
     def __init__(self):
         self.settings = opener_settings.OpenerSettings()
         self._opener = None
-        self._memory_usage_counter = 0
 
         # For error handling
         self._last_request_failed = False
@@ -78,7 +78,6 @@ class ExtendedUrllib(object):
         self._user_paused = False
         self._user_stopped = False
         self._error_stopped = False
-        self._ignore_errors_conf = False
 
     def pause(self, pause_yes_no):
         """
@@ -105,11 +104,6 @@ class ExtendedUrllib(object):
         """
         self._sleep_if_paused_die_if_stopped()
 
-        self._memory_usage_counter += 1
-        if self._memory_usage_counter == 150:
-            dump_memory_usage()
-            self._memory_usage_counter = 0
-
     def _sleep_if_paused_die_if_stopped(self):
         """
         This method sleeps until self._user_paused is False.
@@ -118,11 +112,11 @@ class ExtendedUrllib(object):
             # There might be errors that make us stop the process
             if self._error_stopped:
                 msg = 'Multiple exceptions found while sending HTTP requests.'
-                raise w3afMustStopException(msg)
+                raise ScanMustStopException(msg)
 
             if self._user_stopped:
                 msg = 'The user stopped the scan.'
-                raise w3afMustStopByUserRequest(msg)
+                raise ScanMustStopByUserRequest(msg)
 
         while self._user_paused:
             time.sleep(0.5)
@@ -208,7 +202,7 @@ class ExtendedUrllib(object):
                                   grep=False)
 
     def send_mutant(self, mutant, callback=None, grep=True, cache=True,
-                    cookies=True):
+                    cookies=True, ignore_errors=False):
         """
         Sends a mutant to the remote web server.
 
@@ -239,6 +233,7 @@ class ExtendedUrllib(object):
             'grep': grep,
             'cache': cache,
             'cookies': cookies,
+            'ignore_errors': ignore_errors,
         }
         method = mutant.get_method()
 
@@ -254,7 +249,8 @@ class ExtendedUrllib(object):
         return res
 
     def GET(self, uri, data=None, headers=Headers(), cache=False,
-            grep=True, cookies=True, respect_size_limit=True):
+            grep=True, cookies=True, respect_size_limit=True,
+            ignore_errors=False):
         """
         HTTP GET a URI using a proxy, user agent, and other settings
         that where previously set in opener_settings.py .
@@ -272,12 +268,12 @@ class ExtendedUrllib(object):
         :return: An HTTPResponse object.
         """
         if not isinstance(uri, URL):
-            raise TypeError('The uri parameter of ExtendedUrllib.GET() must be of '
-                            'url.URL type.')
+            raise TypeError('The uri parameter of ExtendedUrllib.GET() must be'
+                            ' of url.URL type.')
 
         if not isinstance(headers, Headers):
-            raise TypeError('The header parameter of ExtendedUrllib.GET() must be of '
-                            'Headers type.')
+            raise TypeError('The header parameter of ExtendedUrllib.GET() must'
+                            ' be of Headers type.')
 
         # Validate what I'm sending, init the library (if needed)
         self._init()
@@ -286,14 +282,15 @@ class ExtendedUrllib(object):
             uri = uri.copy()
             uri.querystring = data
 
-        req = HTTPRequest(uri, cookies=cookies, cache=cache)
+        req = HTTPRequest(uri, cookies=cookies, cache=cache,
+                          ignore_errors=ignore_errors)
         req = self._add_headers(req, headers)
 
         with raise_size_limit(respect_size_limit):
             return self._send(req, grep=grep)
 
     def POST(self, uri, data='', headers=Headers(), grep=True,
-             cache=False, cookies=True):
+             cache=False, cookies=True, ignore_errors=False):
         """
         POST's data to a uri using a proxy, user agents, and other settings
         that where set previously.
@@ -303,12 +300,12 @@ class ExtendedUrllib(object):
         :return: An HTTPResponse object.
         """
         if not isinstance(uri, URL):
-            raise TypeError('The uri parameter of ExtendedUrllib.POST() must be of '
-                            'url.URL type.')
+            raise TypeError('The uri parameter of ExtendedUrllib.POST() must'
+                            ' be of url.URL type.')
 
         if not isinstance(headers, Headers):
-            raise TypeError('The header parameter of ExtendedUrllib.POST() must be of '
-                            'Headers type.')
+            raise TypeError('The header parameter of ExtendedUrllib.POST() must'
+                            ' be of Headers type.')
 
         #    Validate what I'm sending, init the library (if needed)
         self._init()
@@ -320,7 +317,8 @@ class ExtendedUrllib(object):
         #    since we *never* want to return cached responses for POST
         #    requests.
         #
-        req = HTTPRequest(uri, data=data, cookies=cookies, cache=False)
+        req = HTTPRequest(uri, data=data, cookies=cookies, cache=False,
+                          ignore_errors=ignore_errors, method='POST')
         req = self._add_headers(req, headers)
         return self._send(req, grep=grep)
 
@@ -350,7 +348,7 @@ class ExtendedUrllib(object):
                           ' wasn\'t an integer, this is strange... The value'\
                           ' is: "%s".'
                     om.out.error(msg % res.get_headers()[i])
-                    raise w3afException(msg)
+                    raise BaseFrameworkException(msg)
 
         if resource_length is not None:
             return resource_length
@@ -360,7 +358,7 @@ class ExtendedUrllib(object):
                   ' id: %s' % res.id
             om.out.debug(msg)
             # I prefer to fetch the file, before this om.out.debug was a
-            # "raise w3afException", but this didnt make much sense
+            # "raise BaseFrameworkException", but this didnt make much sense
             return 0
 
     def __getattr__(self, method_name):
@@ -377,7 +375,7 @@ class ExtendedUrllib(object):
                 self._method = method
 
             def __call__(self, uri, data=None, headers=Headers(), cache=False,
-                         grep=True, cookies=True):
+                         grep=True, cookies=True, ignore_errors=False):
                 """
                 :return: An HTTPResponse object that's the result of
                     sending the request with a method different from
@@ -394,7 +392,8 @@ class ExtendedUrllib(object):
                 self._xurllib._init()
 
                 req = HTTPRequest(uri, data, cookies=cookies, cache=cache,
-                                  method=self._method)
+                                  method=self._method,
+                                  ignore_errors=ignore_errors)
                 req = self._xurllib._add_headers(req, headers or {})
                 return self._xurllib._send(req, grep=grep)
 
@@ -422,7 +421,7 @@ class ExtendedUrllib(object):
             return True
         elif req.get_full_url().startswith('javascript:') or \
                 req.get_full_url().startswith('mailto:'):
-            raise w3afException('Unsupported URL: ' + req.get_full_url())
+            raise BaseFrameworkException('Unsupported URL: ' + req.get_full_url())
         else:
             return False
 
@@ -434,7 +433,6 @@ class ExtendedUrllib(object):
         :return: An HTTPResponse object.
         """
         # This is the place where I hook the pause and stop feature
-        # And some other things like memory usage debugging.
         self._before_send_hook()
 
         # Sanitize the URL
@@ -470,7 +468,9 @@ class ExtendedUrllib(object):
         want to have some type of backoff feature here that will wait increasing
         amounts of seconds before retrying when a timeout occurs.
         """
-        self._increment_global_error_count(exception)
+        if not req.ignore_errors:
+            self._increment_global_error_count(exception)
+
         return self._generic_send_error_handler(req, exception, grep, original_url)
         
     def _handle_send_urllib_error(self, req, exception, grep, original_url):
@@ -479,17 +479,21 @@ class ExtendedUrllib(object):
         also possible when a proxy is configured and not available
         also possible when auth credentials are wrong for the URI
         """
-        self._increment_global_error_count(exception)
+        if not req.ignore_errors:
+            self._increment_global_error_count(exception)
+
         return self._generic_send_error_handler(req, exception, grep, original_url)
         
     def _generic_send_error_handler(self, req, exception, grep, original_url):
-        msg = ('Failed to HTTP "%s" "%s". Reason: "%s", going to retry.' %
-              (req.get_method(), original_url, exception))
+        if req.ignore_errors:
+            msg = 'Ignoring HTTP error "%s" "%s". Reason: "%s"'
+            om.out.debug(msg % (req.get_method(), original_url, exception))
+            raise ScanMustStopOnUrlError(exception, req)
 
-        # Log the errors
-        om.out.debug(msg)
-        om.out.debug('Traceback for this error: %s' %
-                     traceback.format_exc())
+        # Log the error
+        msg = 'Failed to HTTP "%s" "%s". Reason: "%s", going to retry.'
+        om.out.debug(msg % (req.get_method(), original_url, exception))
+        om.out.debug('Traceback for this error: %s' % traceback.format_exc())
         
         # Then retry!
         req._Request__original = original_url
@@ -565,12 +569,12 @@ class ExtendedUrllib(object):
             # Clear the log of failed requests; this one definitely failed.
             # Let the caller decide what to do
             del self._error_count[req_id]
-            raise w3afMustStopOnUrlError(urlerr, req)
+            raise ScanMustStopOnUrlError(urlerr, req)
 
     def _increment_global_error_count(self, error, parsed_traceback=[]):
         """
         Increment the error count, and if we got a lot of failures raise a
-        "w3afMustStopException" subtype.
+        "ScanMustStopException" subtype.
 
         :param error: Exception object.
 
@@ -580,9 +584,6 @@ class ExtendedUrllib(object):
             Where ('filename', 'line-number', 'function-name')
 
         """
-        if self._ignore_errors_conf:
-            return
-
         last_errors = self._last_errors
 
         if self._last_request_failed:
@@ -647,6 +648,9 @@ class ExtendedUrllib(object):
                 elif reason_err[0] in known_errors:
                     reason_msg = str(reason_err)
 
+        elif isinstance(error, ssl.SSLError):
+            reason_msg = 'SSL Error: %s' % error.message
+
         elif isinstance(error, httplib.HTTPException):
             #
             #    Here we catch:
@@ -664,22 +668,11 @@ class ExtendedUrllib(object):
         
         # If I got a reason, it means that it is a known exception.
         if reason_msg is not None:
-            raise w3afMustStopByKnownReasonExc(msg % error,
-                                               reason=reason_err)
+            raise ScanMustStopByKnownReasonExc(msg % error, reason=reason_err)
 
         else:
             errors = [] if parsed_traceback else last_errors
-            raise w3afMustStopByUnknownReasonExc(msg % error, errs=errors)
-
-    def ignore_errors(self, yes_no):
-        """
-        Let the library know if errors should be ignored or not. Basically,
-        ignore all calls to "_increment_global_error_count" and don't raise the
-        w3afMustStopException.
-
-        :param yes_no: True to ignore errors.
-        """
-        self._ignore_errors_conf = yes_no
+            raise ScanMustStopByUnknownReasonExc(msg % error, errs=errors)
 
     def _zero_global_error_count(self):
         if self._last_request_failed or self._last_errors:
@@ -707,7 +700,7 @@ class ExtendedUrllib(object):
         for eplugin in self._evasion_plugins:
             try:
                 request = eplugin.modify_request(request)
-            except w3afException, e:
+            except BaseFrameworkException, e:
                 msg = 'Evasion plugin "%s" failed to modify the request.'\
                       ' Exception: "%s".'
                 om.out.error(msg % (eplugin.get_name(), e))
@@ -732,6 +725,7 @@ class ExtendedUrllib(object):
                                                     )
 
             self._grep_queue_put((fr, response))
+
 
 @contextmanager
 def raise_size_limit(respect_size_limit):

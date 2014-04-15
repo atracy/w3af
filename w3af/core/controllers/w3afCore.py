@@ -38,6 +38,7 @@ from w3af.core.controllers.core_helpers.fingerprint_404 import fingerprint_404_s
 from w3af.core.controllers.core_helpers.exception_handler import ExceptionHandler
 from w3af.core.controllers.threads.threadpool import Pool
 
+from w3af.core.controllers.profiling import start_profiling, stop_profiling
 from w3af.core.controllers.misc.epoch_to_string import epoch_to_string
 from w3af.core.controllers.misc.dns_cache import enable_dns_cache
 from w3af.core.controllers.misc.number_generator import consecutive_number_generator
@@ -45,9 +46,9 @@ from w3af.core.controllers.misc.homeDir import (create_home_dir,
                                                 verify_dir_has_perm, HOME_DIR)
 from w3af.core.controllers.misc.temp_dir import (create_temp_dir, remove_temp_dir,
                                                  TEMP_DIR)
-from w3af.core.controllers.exceptions import (w3afException, w3afMustStopException,
-                                              w3afMustStopByUnknownReasonExc,
-                                              w3afMustStopByUserRequest)
+from w3af.core.controllers.exceptions import (BaseFrameworkException, ScanMustStopException,
+                                              ScanMustStopByUnknownReasonExc,
+                                              ScanMustStopByUserRequest)
 
 from w3af.core.data.url.extended_urllib import ExtendedUrllib
 from w3af.core.data.kb.knowledge_base import kb
@@ -115,6 +116,8 @@ class w3afCore(object):
         
         :return: None
         """
+        start_profiling()
+
         if not self._first_scan:
             self.cleanup()
         
@@ -183,20 +186,20 @@ class w3afCore(object):
             raise
         except threading.ThreadError:
             handle_threading_error(self.status.scans_completed)
-        except w3afMustStopByUserRequest, sbur:
+        except ScanMustStopByUserRequest, sbur:
             # I don't have to do anything here, since the user is the one that
             # requested the scanner to stop. From here the code continues at the
             # "finally" clause, which simply shows a message saying that the
             # scan finished.
             om.out.information('%s' % sbur)
-        except w3afMustStopByUnknownReasonExc:
+        except ScanMustStopByUnknownReasonExc:
             #
             # TODO: Jan 31, 2011. Temporary workaround. Make w3af crash on
             # purpose so we can find out the *really* unknown error
             # conditions.
             #
             raise
-        except w3afMustStopException, wmse:
+        except ScanMustStopException, wmse:
             error = '\n**IMPORTANT** The following error was detected by'\
                     ' w3af and couldn\'t be resolved:\n%s\n' % wmse
             om.out.error(error)
@@ -206,23 +209,33 @@ class w3afCore(object):
             raise
         finally:
 
-            self.status.scan_finished()
             time_spent = self.status.get_scan_time()
             
-            msg = 'Scan finished in %s' % time_spent
-            
-            try:
-                om.out.information(msg)
-            except:
-                # In some cases we get here after a disk full exception
-                # where the output manager can't even write a log message
-                # to disk and/or the console. Seen this happen many times
-                # in LiveCDs like Backtrack that don't have "real disk space"
-                print msg
+            self._safe_message_print('Scan finished in %s' % time_spent)
+            self._safe_message_print('Stopping the core...')
 
             self.strategy.stop()
-        
             self.scan_end_hook()
+
+            # Make sure this line is the last one. This avoids race conditions
+            # https://github.com/andresriancho/w3af/issues/1487
+            self.status.scan_finished()
+
+    def _safe_message_print(self, msg):
+        """
+        In some cases we get here after a disk full exception where the output
+        manager can't even write a log message to disk and/or the console. Seen
+        this happen many times in LiveCDs like Backtrack that don't have "real
+        disk space"
+        """
+        try:
+            om.out.information(msg)
+        except:
+            # In some cases we get here after a disk full exception
+            # where the output manager can't even write a log message
+            # to disk and/or the console. Seen this happen many times
+            # in LiveCDs like Backtrack that don't have "real disk space"
+            print(msg)
 
     @property
     def worker_pool(self):
@@ -289,15 +302,15 @@ class w3afCore(object):
 
         # First we stop the uri opener, this will perform the following things:
         #   * Set the _user_stopped attribute to True in uri_opener
-        #   * Make all following HTTP requests raise w3afMustStopByUserRequest
+        #   * Make all following HTTP requests raise ScanMustStopByUserRequest
         #   * No more HTTP requests are sent to the target
-        #   * All plugins will raise w3afMustStopByUserRequest
+        #   * All plugins will raise ScanMustStopByUserRequest
         #   * Consumers start to stop because of these exceptions
         self.uri_opener.stop()
 
         # Then we stop the threads which move the fuzzable requests around, in
         # some cases this won't be needed because of the effect generated by the
-        # w3afMustStopByUserRequest exception, but we better make sure the
+        # ScanMustStopByUserRequest exception, but we better make sure the
         # threads have died.
         if self.strategy is not None:
             self.strategy.stop()
@@ -350,16 +363,16 @@ class w3afCore(object):
         if not self.plugins.initialized:
             msg = 'You must call the plugins.init_plugins() method before'\
                   ' calling start().'
-            raise w3afException(msg)
+            raise BaseFrameworkException(msg)
 
         if not cf.cf.get('targets'):
-            raise w3afException('No target URI configured.')
+            raise BaseFrameworkException('No target URI configured.')
 
         if not len(self.plugins.get_enabled_plugins('audit'))\
         and not len(self.plugins.get_enabled_plugins('crawl'))\
         and not len(self.plugins.get_enabled_plugins('infrastructure'))\
         and not len(self.plugins.get_enabled_plugins('grep')):
-            raise w3afException(
+            raise BaseFrameworkException(
                 'No audit, grep or crawl plugins configured to run.')
 
     def scan_end_hook(self):
@@ -368,8 +381,8 @@ class w3afCore(object):
         """
         try:
             # Close the output manager, this needs to be done BEFORE the end()
-            # in uri_opener because some plugins (namely xml_output) use the data
-            # from the history in their end() method. 
+            # in uri_opener because some plugins (namely xml_output) use the
+            # data from the history in their end() method.
             om.out.end_output_plugins()
             
             # Note that running "self.uri_opener.end()" here is a bad idea
@@ -397,6 +410,9 @@ class w3afCore(object):
             
             # No targets to be scanned.
             self.target.clear()
+
+            # Finish the profiling
+            stop_profiling()
 
     def exploit_phase_prerequisites(self):
         """

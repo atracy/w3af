@@ -25,7 +25,7 @@ import w3af.core.controllers.output_manager as om
 import w3af.core.data.kb.knowledge_base as kb
 
 from w3af.core.controllers.plugins.infrastructure_plugin import InfrastructurePlugin
-from w3af.core.controllers.exceptions import w3afRunOnce, w3afException
+from w3af.core.controllers.exceptions import RunOnce, BaseFrameworkException
 from w3af.core.controllers.misc.decorators import runonce
 from w3af.core.controllers.misc.levenshtein import relative_distance_lt
 from w3af.core.data.parsers.url import URL
@@ -48,7 +48,7 @@ class afd(InfrastructurePlugin):
         self._not_filtered = []
         self._filtered = []
 
-    @runonce(exc_class=w3afRunOnce)
+    @runonce(exc_class=RunOnce)
     def discover(self, fuzzable_request):
         """
         Nothing strange, just do some GET requests to the first URL with an
@@ -60,7 +60,7 @@ class afd(InfrastructurePlugin):
         """
         try:
             filtered, not_filtered = self._send_requests(fuzzable_request)
-        except w3afException, w3:
+        except BaseFrameworkException, w3:
             om.out.error(str(w3))
         else:
             self._analyze_results(filtered, not_filtered)
@@ -80,7 +80,7 @@ class afd(InfrastructurePlugin):
 
         try:
             http_resp = self._uri_opener.GET(original_url, cache=True)
-        except w3afException:
+        except BaseFrameworkException:
             msg = 'Active filter detection plugin failed to receive a'\
                   ' response for the first request. Can not perform analysis.'
             om.out.error(msg)
@@ -115,12 +115,12 @@ class afd(InfrastructurePlugin):
         try:
             resp_body = self._uri_opener.GET(offending_URL,
                                              cache=False).get_body()
-        except w3afException:
+        except BaseFrameworkException:
             # I get here when the remote end closes the connection
             self._filtered.append(offending_URL)
         else:
-            # I get here when the remote end returns a 403 or something like that...
-            # So I must analyze the response body
+            # I get here when the remote end returns a 403 or something like
+            # that... So I must analyze the response body
             resp_body = resp_body.replace(offending_string, '')
             resp_body = resp_body.replace(rnd_param, '')
             if relative_distance_lt(resp_body, original_resp_body, 0.15):
@@ -185,11 +185,11 @@ class afd(InfrastructurePlugin):
 
         afd plugin detects both TCP-Connection-reset and HTTP level filters, the
         first one (usually implemented by IPS devices) is easy to verify: if afd
-        requests the custom page and the GET method raises an exception, then its
-        being probably blocked by an active filter. The second one (usually
+        requests the custom page and the GET method raises an exception, then
+        its being probably blocked by an active filter. The second one (usually
         implemented by Web Application Firewalls like mod_security) is a little
         harder to verify: first afd requests a page without adding any offending
-        parameters, afterwards it requests the same URL but with a faked parameter
-        and customized values; if the response bodies differ, then its safe to
-        say that the remote end has an active filter.
+        parameters, afterwards it requests the same URL but with a faked
+        parameter and customized values; if the response bodies differ, then its
+        safe to say that the remote end has an active filter.
         """

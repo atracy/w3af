@@ -35,7 +35,7 @@ from multiprocessing.dummy import Process
 import w3af.core.controllers.output_manager as om
 
 from w3af import ROOT_PATH
-from w3af.core.controllers.exceptions import w3afException, w3afProxyException
+from w3af.core.controllers.exceptions import BaseFrameworkException, ProxyException
 from w3af.core.data.parsers.url import URL
 from w3af.core.data.request.fuzzable_request import FuzzableRequest
 from w3af.core.data.dc.headers import Headers
@@ -105,14 +105,13 @@ class w3afProxyHandler(BaseHTTPRequestHandler):
         else:
             path = self.path
 
-        fuzzable_request = FuzzableRequest(
-            URL(path),
-            self.command,
-            Headers(self.headers.dict.items())
-        )
+        fuzzable_request = FuzzableRequest(URL(path), self.command,
+                                           Headers(self.headers.dict.items()))
+
         post_data = self._get_post_data()
         if post_data:
             fuzzable_request.set_data(post_data)
+
         return fuzzable_request
 
     def do_ALL(self):
@@ -147,13 +146,13 @@ class w3afProxyHandler(BaseHTTPRequestHandler):
         self.headers['Connection'] = 'close'
 
         path = self.path
-        uri_instance = URL(path)
 
         # See HTTPWrapperClass
         if hasattr(self.server, 'chainedHandler'):
             base_path = "https://" + self.server.chainedHandler.path
             path = base_path + path
-            uri_instance = URL(path)
+
+        uri_instance = URL(path)
 
         #
         # Do the request to the remote server
@@ -168,7 +167,7 @@ class w3afProxyHandler(BaseHTTPRequestHandler):
             res = http_method(uri_instance, data=post_data,
                               headers=Headers(self.headers.items()),
                               grep=grep)
-        except w3afException, w:
+        except BaseFrameworkException, w:
             om.out.error('The proxy request failed, error: ' + str(w))
             raise w
         except Exception, e:
@@ -448,7 +447,7 @@ class Proxy(Process):
             self._server = ProxyServer((self._ip, self._port),
                                        self._proxy_handler)
         except socket.error, se:
-            raise w3afProxyException('Socket error while starting proxy: "%s"'
+            raise ProxyException('Socket error while starting proxy: "%s"'
                                      % se.strerror)
         else:
             # This is here to support port == 0, which will bind to the first

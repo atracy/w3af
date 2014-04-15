@@ -32,13 +32,18 @@ class TestSQLMapUpdate(unittest.TestCase):
         
         # See http://nuclearsquid.com/writings/subtree-merging-and-you/
         #     https://www.kernel.org/pub/software/scm/git/docs/howto/using-merge-subtree.html
+        #
+        # This requires git >= 1.8
+        #       sudo add-apt-repository ppa:git-core/ppa
+        #       sudo apt-get update
+        #       sudo apt-get install git
+        #
         setup_commands = ('git remote add -f sqlmap git://github.com/sqlmapproject/sqlmap.git',
-                          'git merge -s ours --no-commit sqlmap/master',
-                          'git read-tree --prefix=w3af/plugins/attack/db/sqlmap/ -u sqlmap/master',
-                          "git commit -m 'Merging sqlmap into our subdirectory'")
+                          'git subtree add --prefix=w3af/plugins/attack/db/sqlmap/ --squash sqlmap master')
         setup_str = ''.join(['    %s\n' % scmd for scmd in setup_commands])
         
-        maintain_commands = ('git pull -s subtree sqlmap master',)
+        maintain_commands = ('git subtree pull --prefix=w3af/plugins/attack/db/sqlmap/ --squash sqlmap master',
+                             'git push')
         maintain_str = ''.join(['    %s\n' % mcmd for mcmd in maintain_commands])
         
         msg = ('\nYou need to update the sqlmap installation that\'s embedded with'

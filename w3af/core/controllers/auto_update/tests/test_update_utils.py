@@ -23,7 +23,8 @@ import subprocess
 
 import git
 
-from w3af.core.controllers.auto_update.utils import (is_git_repo, get_latest_commit,
+from w3af.core.controllers.auto_update.utils import (is_git_repo,
+                                                     get_latest_commit,
                                                      get_current_branch)
 
 
